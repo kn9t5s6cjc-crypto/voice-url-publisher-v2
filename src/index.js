@@ -77,7 +77,7 @@ export default {
         if (!prepared.some(x => x.relative.toLowerCase() === 'index.html')) return Response.json({error:'index.html を公開ルートに設定できませんでした。'}, {status:400});
 
         const siteId = `${team}-${crypto.randomUUID().slice(0,8)}`;
-        const uploadBatchSize = 20;
+        const uploadBatchSize = 5;
         for (let i = 0; i < prepared.length; i += uploadBatchSize) {
           const batch = prepared.slice(i, i + uploadBatchSize);
           await Promise.all(batch.map(x => env.SITES.put(`sites/${siteId}/${x.relative}`, x.data, {httpMetadata:{contentType:ext(x.relative)}})));
