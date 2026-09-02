@@ -27,6 +27,10 @@ function ignored(path) {
   return path.split('/').some(p => p === '__MACOSX' || p === '.DS_Store' || p.startsWith('._'));
 }
 function ext(path) { const x = path.split('.').pop().toLowerCase(); return MIME[x] || 'application/octet-stream'; }
+function decodeUrlPath(value) {
+  try { return decodeURIComponent(value); }
+  catch { return null; }
+}
 function htmlPage() {
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VOICE EVENT | Webサイトを公開する</title><style>
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;background:#f6f6f4;color:#111}.wrap{max-width:760px;margin:0 auto;padding:52px 20px 80px}.brand{font-size:13px;font-weight:900;letter-spacing:.18em;color:#e60012}.card{margin-top:18px;background:#fff;border:1px solid #ddd;border-radius:18px;padding:34px;box-shadow:0 12px 40px #0000000a}h1{font-size:34px;margin:0 0 10px}.lead{color:#555;line-height:1.8;margin-bottom:28px}label{display:block;font-size:13px;font-weight:800;margin:18px 0 8px}input{width:100%;padding:14px;border:1px solid #ccc;border-radius:10px;font-size:16px}button{width:100%;margin-top:24px;padding:16px;border:0;border-radius:10px;background:#e60012;color:#fff;font-weight:900;font-size:16px;cursor:pointer}button:disabled{opacity:.5}.note{font-size:12px;color:#777;margin-top:14px;line-height:1.7}.steps{margin-top:20px;font-weight:700;font-size:13px}.result{display:none;margin-top:22px;padding:18px;background:#f5f5f5;border-radius:12px;word-break:break-all}.result a{color:#e60012;font-weight:800}.error{color:#c00}.spinner{display:none;margin-top:12px;text-align:center;color:#666;font-size:13px}@media(max-width:600px){.wrap{padding-top:28px}.card{padding:24px}h1{font-size:27px}}
@@ -83,7 +87,7 @@ export default {
           await Promise.all(batch.map(x => env.SITES.put(`sites/${siteId}/${x.relative}`, x.data, {httpMetadata:{contentType:ext(x.relative)}})));
         }
         await env.SITES.put(`sites/${siteId}/.manifest`, JSON.stringify({createdAt:new Date().toISOString(),files:prepared.map(x=>x.relative)}), {httpMetadata:{contentType:'application/json'}});
-        return Response.json({url:`${url.origin}/s/${siteId}/`});
+        return Response.json({url:`${url.origin}/s/${encodeURIComponent(siteId)}/`});
       } catch (e) {
         console.error(e);
         return Response.json({error:'公開処理でエラーが発生しました。もう一度試してください。'}, {status:500});
@@ -94,8 +98,9 @@ export default {
       const rest = url.pathname.slice(3);
       const slash = rest.indexOf('/');
       if (slash < 1) return new Response('Not Found',{status:404});
-      const siteId = rest.slice(0,slash);
-      let path = rest.slice(slash+1) || 'index.html';
+      const siteId = decodeUrlPath(rest.slice(0,slash));
+      let path = decodeUrlPath(rest.slice(slash+1) || 'index.html');
+      if (!siteId || !path) return new Response('Not Found',{status:404});
       path = safePath(path);
       if (!path) return new Response('Not Found',{status:404});
       let obj = await env.SITES.get(`sites/${siteId}/${path}`);
