@@ -72,8 +72,7 @@ button{border:0;border-radius:0;font:900 14px inherit;cursor:pointer}
 .publish:hover{background:#111;transform:translateY(-2px)}.publish:disabled{opacity:.55;transform:none;cursor:wait}
 .publish:after{content:"→";position:absolute;right:18px;font-size:20px;top:13px}
 .note{font-size:10px;color:#777;margin-top:13px;line-height:1.6}
-.progress{display:none;margin-top:16px}.progress-row{display:flex;justify-content:space-between;font:700 10px monospace;margin-bottom:6px}.bar{height:3px;background:#ddd;overflow:hidden}.bar i{display:block;width:35%;height:100%;background:var(--red);animation:load 1.2s infinite ease-in-out}
-@keyframes load{0%{transform:translateX(-120%)}100%{transform:translateX(380%)}}
+.progress{display:none;margin-top:18px;padding:15px;background:#111;color:#fff}.progress-row{display:flex;justify-content:space-between;align-items:center;font:800 11px monospace;margin-bottom:10px}.progress-label{font-family:inherit;font-size:13px}.progress-percent{color:#ff4a50}.bar{height:5px;background:#3b3b3b;overflow:hidden}.bar i{display:block;width:0;height:100%;background:var(--red);transition:width .65s cubic-bezier(.22,1,.36,1)}.progress.complete{background:var(--red)}.progress.complete .progress-percent{color:#fff}.progress.complete .bar{background:#ffffff55}.progress.complete .bar i{background:#fff}
 .result{display:none;margin-top:20px;border:1px solid #111;background:#fff;padding:20px}
 .success-label{color:var(--red);font:800 10px monospace;letter-spacing:.12em}.result h3{font-size:24px;margin:6px 0 16px;letter-spacing:-.04em}
 .result-grid{display:grid;grid-template-columns:1fr 128px;gap:18px;align-items:center}
@@ -110,7 +109,7 @@ footer{border-top:1px solid #aaa;padding-top:16px;display:flex;justify-content:s
 <div class="drop" id="drop"><input id="zip" name="zip" type="file" accept=".zip,application/zip" required><div class="upload-icon">↑</div><b>ZIPを選択 または ドロップ</b><p>index.htmlを含む20MB以下のファイル</p></div>
 <div id="fileInfo" class="file-info"></div>
 <button id="btn" class="publish">公開URLを発行する</button>
-<div id="progress" class="progress"><div class="progress-row"><span>UPLOADING & PUBLISHING</span><span>PLEASE WAIT</span></div><div class="bar"><i></i></div></div>
+<div id="progress" class="progress"><div class="progress-row"><span id="progressLabel" class="progress-label">ZIPを読み込み中…</span><span id="progressPercent" class="progress-percent">10%</span></div><div class="bar"><i id="progressBar"></i></div></div>
 </form>
 <div class="note">Macで作成されたZIPにも対応しています。ZIP内にフォルダが1つ入っていても自動で検出します。</div>
 <div id="result" class="result"></div>
@@ -120,21 +119,26 @@ footer{border-top:1px solid #aaa;padding-top:16px;display:flex;justify-content:s
 <footer><span>VOICE EVENT © 2026</span><span>POWERED BY CLOUDFLARE</span></footer>
 </main>
 <script>
-const f=document.getElementById('f'),btn=document.getElementById('btn'),progress=document.getElementById('progress'),result=document.getElementById('result'),zipInput=document.getElementById('zip'),drop=document.getElementById('drop'),fileInfo=document.getElementById('fileInfo');
+const f=document.getElementById('f'),btn=document.getElementById('btn'),progress=document.getElementById('progress'),progressLabel=document.getElementById('progressLabel'),progressPercent=document.getElementById('progressPercent'),progressBar=document.getElementById('progressBar'),result=document.getElementById('result'),zipInput=document.getElementById('zip'),drop=document.getElementById('drop'),fileInfo=document.getElementById('fileInfo');
+let progressTimers=[];
+function setProgress(label,percent,complete=false){progressLabel.textContent=label;progressPercent.textContent=percent+'%';progressBar.style.width=percent+'%';progress.classList.toggle('complete',complete)}
+function startProgress(){progressTimers.forEach(clearTimeout);progressTimers=[];progress.style.display='block';setProgress('ZIPを読み込み中…',10);progressTimers.push(setTimeout(()=>setProgress('ファイルを確認中…',30),700));progressTimers.push(setTimeout(()=>setProgress('Webサイトを作成中…',55),2200));progressTimers.push(setTimeout(()=>setProgress('インターネットに公開中…',75),4800));progressTimers.push(setTimeout(()=>setProgress('公開URLを発行中…',90),8000))}
+function finishProgress(){progressTimers.forEach(clearTimeout);progressTimers=[];setProgress('完成！',100,true)}
 function showFile(){const file=zipInput.files[0];if(!file){fileInfo.style.display='none';return}fileInfo.style.display='block';fileInfo.textContent='✓ '+file.name+'  /  '+(file.size/1024/1024).toFixed(2)+' MB'}
 zipInput.addEventListener('change',showFile);
 ['dragenter','dragover'].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.add('drag')}));
 ['dragleave','drop'].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.remove('drag')}));
 drop.addEventListener('drop',e=>{if(e.dataTransfer.files.length){zipInput.files=e.dataTransfer.files;showFile()}});
 f.addEventListener('submit',async e=>{
- e.preventDefault();result.style.display='none';btn.disabled=true;progress.style.display='block';
+ e.preventDefault();result.style.display='none';btn.disabled=true;startProgress();
  try{
   const fd=new FormData(f),r=await fetch('/api/publish',{method:'POST',body:fd}),d=await r.json();
   result.style.display='block';if(!r.ok)throw new Error(d.error||'公開に失敗しました');
-  result.innerHTML='<div class="success-label">● PUBLISH COMPLETE</div><h3>公開できました！</h3><div class="result-grid"><div><div class="urlbox">'+d.url+'</div><div class="actions"><a class="open" href="'+d.url+'" target="_blank" rel="noopener">サイトを開く ↗</a><button class="copy" type="button" id="copyUrl">URLをコピー</button></div></div><img class="qr" src="'+d.qr+'" alt="公開URLのQRコード"></div>';
+  finishProgress();
+  result.innerHTML='<div class="success-label">● PUBLISH COMPLETE</div><h3>完成！</h3><div class="result-grid"><div><div class="urlbox">'+d.url+'</div><div class="actions"><a class="open" href="'+d.url+'" target="_blank" rel="noopener">サイトを開く ↗</a><button class="copy" type="button" id="copyUrl">URLをコピー</button></div></div><img class="qr" src="'+d.qr+'" alt="公開URLのQRコード"></div>';
   const copy=document.getElementById('copyUrl');copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(d.url);copy.textContent='コピーしました ✓';setTimeout(()=>copy.textContent='URLをコピー',1800)});
- }catch(err){result.style.display='block';result.innerHTML='<span class="error">! '+err.message+'</span>'}
- finally{btn.disabled=false;progress.style.display='none'}
+ }catch(err){progressTimers.forEach(clearTimeout);progressTimers=[];progress.style.display='none';result.style.display='block';result.innerHTML='<span class="error">! '+err.message+'</span>'}
+ finally{btn.disabled=false}
 });
 </script>
 </body></html>`;
