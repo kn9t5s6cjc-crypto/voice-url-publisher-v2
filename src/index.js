@@ -27,6 +27,13 @@ function ignored(path){return path.split('/').some(p=>p==='__MACOSX'||p==='.DS_S
 function ext(path){const x=path.split('.').pop().toLowerCase();return MIME[x]||'application/octet-stream';}
 function decodeUrlPath(value){try{return decodeURIComponent(value)}catch{return null}}
 
+function resultPage(siteUrl,qr){
+ const safeUrl=siteUrl.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+ return '<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090909"><title>完成！— VOICE PUBLISH</title><style>'+
+ '*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:#090909;color:#fff;display:grid;place-items:center;padding:24px}body:before{content:"";position:fixed;inset:0;opacity:.12;pointer-events:none;background-image:linear-gradient(#fff0 23px,#fff 24px),linear-gradient(90deg,#fff0 23px,#fff 24px);background-size:24px 24px}.wrap{position:relative;width:min(820px,100%);text-align:center}.brand{font:900 11px monospace;letter-spacing:.2em;color:#ed1c24;margin-bottom:24px}.check{width:94px;height:94px;border-radius:50%;background:#ed1c24;display:grid;place-items:center;margin:0 auto 20px;font-size:48px;font-weight:900;box-shadow:0 0 0 12px #ed1c2422}h1{font-size:clamp(52px,10vw,92px);line-height:.9;letter-spacing:-.07em;margin:0}.lead{color:#aaa;margin:20px 0 30px;font-size:15px}.result{display:grid;grid-template-columns:1fr 260px;gap:28px;text-align:left;background:#f4f2ed;color:#090909;padding:34px;box-shadow:14px 14px 0 #ed1c24}.label{font:900 10px monospace;letter-spacing:.15em;color:#ed1c24;margin-bottom:10px}.url{background:#fff;border-left:4px solid #ed1c24;padding:16px;font:12px/1.6 monospace;word-break:break-all}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.actions a,.actions button{border:0;border-radius:0;padding:15px;text-align:center;text-decoration:none;font-size:12px;font-weight:900;cursor:pointer}.open{background:#ed1c24;color:#fff}.copy{background:#111;color:#fff}.again{display:inline-block;margin-top:24px;color:#fff;text-decoration:none;border-bottom:1px solid #777;padding:8px;font-size:12px;font-weight:800}.qrbox{text-align:center;background:#fff;padding:14px}.qrbox img{display:block;width:100%;height:auto}.qrbox p{font-size:11px;font-weight:800;margin:10px 0 0}@media(max-width:650px){.result{grid-template-columns:1fr;padding:22px;box-shadow:8px 8px 0 #ed1c24}.qrbox{max-width:260px;margin:auto}.actions{grid-template-columns:1fr}h1{font-size:62px}}'+
+ '</style></head><body><main class="wrap"><div class="brand">VOICE / PUBLISH COMPLETE</div><div class="check">✓</div><h1>完成！</h1><p class="lead">Webサイトがインターネットに公開されました。</p><section class="result"><div><div class="label">PUBLIC URL</div><div class="url">'+safeUrl+'</div><div class="actions"><a class="open" href="'+safeUrl+'" target="_blank" rel="noopener">サイトを開く ↗</a><button class="copy" id="copy" type="button">URLをコピー</button></div></div><div class="qrbox"><img src="'+qr+'" alt="公開URLのQRコード"><p>スマホで読み取って開く</p></div></section><a class="again" href="/">← 別のサイトを公開する</a></main><script>const siteUrl='+JSON.stringify(siteUrl)+';document.getElementById("copy").addEventListener("click",async function(){await navigator.clipboard.writeText(siteUrl);this.textContent="コピーしました ✓";setTimeout(()=>this.textContent="URLをコピー",1800)});</script></body></html>';
+}
+
 function htmlPage(){
 return `<!doctype html>
 <html lang="ja">
@@ -123,7 +130,7 @@ const f=document.getElementById('f'),btn=document.getElementById('btn'),progress
 let progressTimers=[];
 function setProgress(label,percent,complete=false){progressLabel.textContent=label;progressPercent.textContent=percent+'%';progressBar.style.width=percent+'%';progress.classList.toggle('complete',complete);progressSymbol.textContent=complete?'✓':'↗';progressSub.textContent=complete?'あなたのWebサイトが公開されました！':'あなたのWebサイトを公開しています'}
 function startProgress(){progressTimers.forEach(clearTimeout);progressTimers=[];progress.style.display='flex';setProgress('ZIPを読み込み中…',10);progressTimers.push(setTimeout(()=>setProgress('ファイルを確認中…',30),700));progressTimers.push(setTimeout(()=>setProgress('Webサイトを作成中…',55),2200));progressTimers.push(setTimeout(()=>setProgress('インターネットに公開中…',75),4800));progressTimers.push(setTimeout(()=>setProgress('公開URLを発行中…',90),8000))}
-function finishProgress(){progressTimers.forEach(clearTimeout);progressTimers=[];setProgress('完成！',100,true);progressTimers.push(setTimeout(()=>{progress.style.display='none';result.scrollIntoView({behavior:'smooth',block:'center'})},1500))}
+function finishProgress(nextUrl){progressTimers.forEach(clearTimeout);progressTimers=[];setProgress('完成！',100,true);progressTimers.push(setTimeout(()=>{location.href=nextUrl},1500))}
 function showFile(){const file=zipInput.files[0];if(!file){fileInfo.style.display='none';return}fileInfo.style.display='block';fileInfo.textContent='✓ '+file.name+'  /  '+(file.size/1024/1024).toFixed(2)+' MB'}
 zipInput.addEventListener('change',showFile);
 ['dragenter','dragover'].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.add('drag')}));
@@ -133,10 +140,8 @@ f.addEventListener('submit',async e=>{
  e.preventDefault();result.style.display='none';btn.disabled=true;startProgress();
  try{
   const fd=new FormData(f),r=await fetch('/api/publish',{method:'POST',body:fd}),d=await r.json();
-  result.style.display='block';if(!r.ok)throw new Error(d.error||'公開に失敗しました');
-  finishProgress();
-  result.innerHTML='<div class="success-label">● PUBLISH COMPLETE</div><h3>完成！</h3><div class="result-grid"><div><div class="urlbox">'+d.url+'</div><div class="actions"><a class="open" href="'+d.url+'" target="_blank" rel="noopener">サイトを開く ↗</a><button class="copy" type="button" id="copyUrl">URLをコピー</button></div></div><img class="qr" src="'+d.qr+'" alt="公開URLのQRコード"></div>';
-  const copy=document.getElementById('copyUrl');copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(d.url);copy.textContent='コピーしました ✓';setTimeout(()=>copy.textContent='URLをコピー',1800)});
+  if(!r.ok){result.style.display='block';throw new Error(d.error||'公開に失敗しました')}
+  finishProgress(d.resultUrl);
  }catch(err){progressTimers.forEach(clearTimeout);progressTimers=[];progress.style.display='none';result.style.display='block';result.innerHTML='<span class="error">! '+err.message+'</span>'}
  finally{btn.disabled=false}
 });
@@ -148,6 +153,14 @@ export default {
  async fetch(request,env){
   const url=new URL(request.url);
   if(request.method==='GET'&&url.pathname==='/')return new Response(htmlPage(),{headers:{'content-type':'text/html; charset=utf-8'}});
+  if(request.method==='GET'&&url.pathname==='/result'){
+   const siteId=url.searchParams.get('site')||'';
+   if(!/^[a-z0-9\u3040-\u30ff\u3400-\u9fff_-]{1,60}$/u.test(siteId))return new Response('Not Found',{status:404});
+   const publishedUrl=`${url.origin}/s/${encodeURIComponent(siteId)}/`;
+   const qrSvg=await QRCode.toString(publishedUrl,{type:'svg',width:256,margin:1,color:{dark:'#090909',light:'#ffffff'},errorCorrectionLevel:'M'});
+   const qr=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrSvg)}`;
+   return new Response(resultPage(publishedUrl,qr),{headers:{'content-type':'text/html; charset=utf-8'}});
+  }
   if(request.method==='POST'&&url.pathname==='/api/publish'){
    try{
     const form=await request.formData(),file=form.get('zip'),team=cleanTeamName(String(form.get('team')||''));
@@ -169,9 +182,8 @@ export default {
     for(let i=0;i<prepared.length;i+=5){const batch=prepared.slice(i,i+5);await Promise.all(batch.map(x=>env.SITES.put(`sites/${siteId}/${x.relative}`,x.data,{httpMetadata:{contentType:ext(x.relative)}})))}
     await env.SITES.put(`sites/${siteId}/.manifest`,JSON.stringify({createdAt:new Date().toISOString(),files:prepared.map(x=>x.relative)}),{httpMetadata:{contentType:'application/json'}});
     const publishedUrl=`${url.origin}/s/${encodeURIComponent(siteId)}/`;
-    const qrSvg=await QRCode.toString(publishedUrl,{type:'svg',width:256,margin:1,color:{dark:'#090909',light:'#ffffff'},errorCorrectionLevel:'M'});
-    const qr=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrSvg)}`;
-    return Response.json({url:publishedUrl,qr});
+    const resultUrl=`${url.origin}/result?site=${encodeURIComponent(siteId)}`;
+    return Response.json({url:publishedUrl,resultUrl});
    }catch(e){console.error(e);return Response.json({error:'公開処理でエラーが発生しました。もう一度試してください。'},{status:500})}
   }
   if(request.method==='GET'&&url.pathname.startsWith('/s/')){
