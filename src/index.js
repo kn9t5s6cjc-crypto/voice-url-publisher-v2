@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import QRCode from 'qrcode';
 const MAX_ZIP_BYTES = 20 * 1024 * 1024;
 const MAX_FILES = 300;
 const MAX_UNCOMPRESSED_BYTES = 60 * 1024 * 1024;
@@ -164,7 +165,8 @@ export default {
     for(let i=0;i<prepared.length;i+=5){const batch=prepared.slice(i,i+5);await Promise.all(batch.map(x=>env.SITES.put(`sites/${siteId}/${x.relative}`,x.data,{httpMetadata:{contentType:ext(x.relative)}})))}
     await env.SITES.put(`sites/${siteId}/.manifest`,JSON.stringify({createdAt:new Date().toISOString(),files:prepared.map(x=>x.relative)}),{httpMetadata:{contentType:'application/json'}});
     const publishedUrl=`${url.origin}/s/${encodeURIComponent(siteId)}/`;
-    const qr=`https://api.qrserver.com/v1/create-qr-code/?size=256x256&margin=8&data=${encodeURIComponent(publishedUrl)}`;
+    const qrSvg=await QRCode.toString(publishedUrl,{type:'svg',width:256,margin:1,color:{dark:'#090909',light:'#ffffff'},errorCorrectionLevel:'M'});
+    const qr=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrSvg)}`;
     return Response.json({url:publishedUrl,qr});
    }catch(e){console.error(e);return Response.json({error:'公開処理でエラーが発生しました。もう一度試してください。'},{status:500})}
   }
