@@ -28,8 +28,9 @@ function ext(path){const x=path.split('.').pop().toLowerCase();return MIME[x]||'
 function decodeUrlPath(value){try{return decodeURIComponent(value)}catch{return null}}
 function escapeHtml(value=''){return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function inlineJson(value){return JSON.stringify(value).replace(/</g,'\\u003c')}
+async function tokenHash(value){const data=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(data)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 
-async function replaceSiteFiles(env,siteId,prepared,teamLabel){
+async function replaceSiteFiles(env,siteId,prepared,teamLabel,deleteTokenHash){
  const manifestKey=`sites/${siteId}/.manifest`;
  const previous=await env.SITES.get(manifestKey);
  if(previous){
@@ -40,7 +41,7 @@ async function replaceSiteFiles(env,siteId,prepared,teamLabel){
   }catch{}
  }
  for(let i=0;i<prepared.length;i+=5){const batch=prepared.slice(i,i+5);await Promise.all(batch.map(x=>env.SITES.put(`sites/${siteId}/${x.relative}`,x.data,{httpMetadata:{contentType:ext(x.relative)}})))}
- await env.SITES.put(manifestKey,JSON.stringify({team:teamLabel,updatedAt:new Date().toISOString(),files:prepared.map(x=>x.relative)}),{httpMetadata:{contentType:'application/json'}});
+ await env.SITES.put(manifestKey,JSON.stringify({team:teamLabel,updatedAt:new Date().toISOString(),files:prepared.map(x=>x.relative),deleteTokenHash}),{httpMetadata:{contentType:'application/json'}});
 }
 
 function ensureEditorAssets(html){
@@ -66,10 +67,14 @@ function resultPage(siteUrl,qr){
 }
 
 function sitesPage(items,origin){
- const cards=items.length?items.map(item=>{const url=`${origin}/s/${encodeURIComponent(item.id)}/`;return `<article class="site"><div><span class="eyebrow">TEAM SITE</span><h2>${escapeHtml(item.team)}</h2><p>${escapeHtml(url)}</p></div><div class="actions"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">開く ↗</a><button data-url="${escapeHtml(url)}">コピー</button></div></article>`}).join(''):'<div class="empty">まだ公開されたサイトはありません。</div>';
+ const cards=items.length?items.map(item=>{const url=`${origin}/s/${encodeURIComponent(item.id)}/`;return `<article class="site" data-card="${escapeHtml(item.id)}"><div><span class="eyebrow">TEAM SITE</span><h2>${escapeHtml(item.team)}</h2><p>${escapeHtml(url)}</p></div><div class="actions"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">開く ↗</a><button data-url="${escapeHtml(url)}">コピー</button><button class="delete" data-delete="${escapeHtml(item.id)}" data-team="${escapeHtml(item.team)}" hidden>削除</button></div></article>`}).join(''):'<div class="empty">まだ公開されたサイトはありません。</div>';
  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090909"><title>公開サイト一覧 — VOICE PUBLISH</title><style>
- :root{--red:#ed1c24;--ink:#090909;--paper:#f4f2ed}*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--paper);color:var(--ink)}.wrap{width:min(980px,100%);margin:auto}header{display:flex;justify-content:space-between;align-items:center;padding:8px 0 22px;border-bottom:1px solid #aaa}.brand{font-weight:950;font-size:20px;letter-spacing:-.04em}.brand b{display:inline-grid;place-items:center;width:28px;height:28px;margin-right:10px;background:var(--red);color:#fff;font-size:12px;transform:rotate(-5deg)}header a{color:#111;font-size:13px;font-weight:800;text-decoration:none}h1{font-size:clamp(42px,8vw,74px);letter-spacing:-.07em;line-height:.95;margin:56px 0 12px}h1 span{color:var(--red)}.lead{color:#666;margin:0 0 38px}.grid{display:grid;gap:15px}.site{display:flex;align-items:center;justify-content:space-between;gap:20px;background:#fff;border:1px solid #bbb;padding:24px;box-shadow:7px 7px 0 #111}.eyebrow{font:800 10px monospace;letter-spacing:.14em;color:var(--red)}h2{font-size:26px;margin:5px 0 8px;letter-spacing:-.04em}.site p{max-width:570px;margin:0;color:#777;font:12px/1.5 monospace;word-break:break-all}.actions{display:flex;gap:8px;flex-shrink:0}.actions a,.actions button{border:0;padding:12px 16px;text-decoration:none;font-size:12px;font-weight:900;cursor:pointer}.actions a{background:var(--red);color:#fff}.actions button{background:#111;color:#fff}.empty{padding:50px;background:#fff;border:1px solid #bbb;text-align:center;color:#777}.toast{position:fixed;right:20px;bottom:20px;padding:13px 17px;background:#111;color:#fff;font-size:13px;font-weight:800;transform:translateY(160%);transition:.25s}.toast.show{transform:none}@media(max-width:620px){body{padding:16px}.site{display:block;padding:19px;box-shadow:5px 5px 0 #111}.actions{margin-top:16px}.actions a,.actions button{flex:1;text-align:center}h1{margin-top:42px}}
- </style></head><body><main class="wrap"><header><div class="brand"><b>V</b>VOICE PUBLISH</div><a href="/">＋ サイトを作る</a></header><h1>みんなの<span>Webサイト。</span></h1><p class="lead">公開されたチームサイトを一覧で確認できます。</p><section class="grid">${cards}</section></main><div id="toast" class="toast">URLをコピーしました ✓</div><script>document.querySelectorAll('[data-url]').forEach(button=>button.addEventListener('click',async()=>{await navigator.clipboard.writeText(button.dataset.url);const toast=document.getElementById('toast');toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800)}));</script></body></html>`;
+ :root{--red:#ed1c24;--ink:#090909;--paper:#f4f2ed}*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;min-height:100vh;padding:24px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--paper);color:var(--ink)}.wrap{width:min(980px,100%);margin:auto}header{display:flex;justify-content:space-between;align-items:center;padding:8px 0 22px;border-bottom:1px solid #aaa}.brand{font-weight:950;font-size:20px;letter-spacing:-.04em}.brand b{display:inline-grid;place-items:center;width:28px;height:28px;margin-right:10px;background:var(--red);color:#fff;font-size:12px;transform:rotate(-5deg)}header a{color:#111;font-size:13px;font-weight:800;text-decoration:none}h1{font-size:clamp(42px,8vw,74px);letter-spacing:-.07em;line-height:.95;margin:56px 0 12px}h1 span{color:var(--red)}.lead{color:#666;margin:0 0 38px}.grid{display:grid;gap:15px}.site{display:flex;align-items:center;justify-content:space-between;gap:20px;background:#fff;border:1px solid #bbb;padding:24px;box-shadow:7px 7px 0 #111;transition:.2s}.site.removing{opacity:0;transform:translateX(20px)}.eyebrow{font:800 10px monospace;letter-spacing:.14em;color:var(--red)}h2{font-size:26px;margin:5px 0 8px;letter-spacing:-.04em}.site p{max-width:570px;margin:0;color:#777;font:12px/1.5 monospace;word-break:break-all}.actions{display:flex;gap:8px;flex-shrink:0}.actions a,.actions button{border:0;padding:12px 16px;text-decoration:none;font-size:12px;font-weight:900;cursor:pointer}.actions a{background:var(--red);color:#fff}.actions button{background:#111;color:#fff}.actions .delete{background:#fff;color:#b0000b;border:1px solid #b0000b}.empty{padding:50px;background:#fff;border:1px solid #bbb;text-align:center;color:#777}.toast{position:fixed;right:20px;bottom:20px;padding:13px 17px;background:#111;color:#fff;font-size:13px;font-weight:800;transform:translateY(160%);transition:.25s}.toast.show{transform:none}@media(max-width:620px){body{padding:16px}.site{display:block;padding:19px;box-shadow:5px 5px 0 #111}.actions{margin-top:16px;flex-wrap:wrap}.actions a,.actions button{flex:1;text-align:center}h1{margin-top:42px}}
+ </style></head><body><main class="wrap"><header><div class="brand"><b>V</b>VOICE PUBLISH</div><a href="/">＋ サイトを作る</a></header><h1>みんなの<span>Webサイト。</span></h1><p class="lead">公開されたチームサイトを一覧で確認できます。</p><section class="grid">${cards}</section></main><div id="toast" class="toast" role="status"></div><script>
+ const toast=document.getElementById('toast');function message(text){toast.textContent=text;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
+ document.querySelectorAll('[data-url]').forEach(button=>button.addEventListener('click',async()=>{await navigator.clipboard.writeText(button.dataset.url);message('URLをコピーしました ✓')}));
+ document.querySelectorAll('[data-delete]').forEach(button=>{const id=button.dataset.delete,token=localStorage.getItem('voice-delete-token-'+id);if(!token)return;button.hidden=false;button.addEventListener('click',async()=>{if(!confirm(button.dataset.team+' の公開サイトを削除しますか？'))return;button.disabled=true;button.textContent='削除中…';try{const response=await fetch('/api/sites/'+encodeURIComponent(id),{method:'DELETE',headers:{'x-delete-token':token}});const data=await response.json();if(!response.ok)throw new Error(data.error||'削除できませんでした');localStorage.removeItem('voice-delete-token-'+id);const card=document.querySelector('[data-card="'+CSS.escape(id)+'"]');card.classList.add('removing');setTimeout(()=>card.remove(),220);message('公開サイトを削除しました')}catch(error){button.disabled=false;button.textContent='削除';message(error.message)}})});
+ </script></body></html>`;
 }
 
 function editorPage(){
@@ -158,7 +163,7 @@ document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>
 document.querySelectorAll('[data-device]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-device]').forEach(x=>x.classList.toggle('active',x===btn));frameShell.classList.toggle('mobile',btn.dataset.device==='mobile')}));
 function message(text){toast.textContent=text;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
 document.getElementById('reset').addEventListener('click',()=>{if(!confirm('書いたコードを消して、最初の状態に戻しますか？'))return;Object.keys(editors).forEach(key=>{editors[key].value=defaults[key];localStorage.setItem('voice-studio-'+key,defaults[key])});render();message('最初の状態に戻しました')});
-document.getElementById('publish').addEventListener('click',async()=>{const team=document.getElementById('team').value.trim();if(!team){message('チーム名を入力してください');document.getElementById('team').focus();return}document.getElementById('busy').classList.add('show');try{const r=await fetch('/api/publish-code',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({team,html:editors.html.value,css:editors.css.value,js:editors.js.value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'公開に失敗しました');location.href=d.resultUrl}catch(e){document.getElementById('busy').classList.remove('show');message(e.message)}});
+document.getElementById('publish').addEventListener('click',async()=>{const team=document.getElementById('team').value.trim();if(!team){message('チーム名を入力してください');document.getElementById('team').focus();return}document.getElementById('busy').classList.add('show');try{const r=await fetch('/api/publish-code',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({team,html:editors.html.value,css:editors.css.value,js:editors.js.value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'公開に失敗しました');localStorage.setItem('voice-delete-token-'+d.siteId,d.deleteToken);location.href=d.resultUrl}catch(e){document.getElementById('busy').classList.remove('show');message(e.message)}});
 render();
 </script>
 </body></html>`;
@@ -274,6 +279,7 @@ f.addEventListener('submit',async e=>{
  try{
   const fd=new FormData(f),r=await fetch('/api/publish',{method:'POST',body:fd}),d=await r.json();
   if(!r.ok){result.style.display='block';throw new Error(d.error||'公開に失敗しました')}
+  localStorage.setItem('voice-delete-token-'+d.siteId,d.deleteToken);
   finishProgress(d.resultUrl);
  }catch(err){progressTimers.forEach(clearTimeout);progressTimers=[];progress.style.display='none';result.style.display='block';result.innerHTML='<span class="error">! '+err.message+'</span>'}
  finally{btn.disabled=false}
@@ -298,6 +304,18 @@ export default {
     try{const obj=await env.SITES.get(`${prefix}.manifest`);const data=obj?await obj.json():{};return {id,team:data.team||id.replace(/-[a-f0-9]{8}$/i,''),updatedAt:data.updatedAt||data.createdAt||''}}catch{return {id,team:id.replace(/-[a-f0-9]{8}$/i,''),updatedAt:''}}
    }))).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));
    return new Response(sitesPage(items,url.origin),{headers:{'content-type':'text/html; charset=utf-8'}});
+  }
+  if(request.method==='DELETE'&&url.pathname.startsWith('/api/sites/')){
+   const siteId=decodeUrlPath(url.pathname.slice('/api/sites/'.length));
+   if(!siteId||!/^[a-z0-9\u3040-\u30ff\u3400-\u9fff_-]{1,60}$/u.test(siteId))return Response.json({error:'サイトが見つかりません。'},{status:404});
+   const manifestKey=`sites/${siteId}/.manifest`,manifest=await env.SITES.get(manifestKey);
+   if(!manifest)return Response.json({error:'サイトが見つかりません。'},{status:404});
+   let data;try{data=await manifest.json()}catch{return Response.json({error:'削除情報を確認できませんでした。'},{status:500})}
+   const token=request.headers.get('x-delete-token')||'';
+   if(!data.deleteTokenHash||!token||await tokenHash(token)!==data.deleteTokenHash)return Response.json({error:'この端末からは削除できません。'},{status:403});
+   const keys=(data.files||[]).map(path=>`sites/${siteId}/${path}`).concat(manifestKey);
+   if(keys.length)await env.SITES.delete(keys);
+   return Response.json({ok:true});
   }
   if(request.method==='GET'&&url.pathname==='/result'){
    const siteId=url.searchParams.get('site')||'';
@@ -324,11 +342,11 @@ export default {
     let total=0;const prepared=[];
     for(const x of siteEntries){const relative=x.path.slice(root.length);if(!relative||ignored(relative))continue;const data=await x.e.async('uint8array');total+=data.byteLength;if(total>MAX_UNCOMPRESSED_BYTES)return Response.json({error:'展開後のファイル容量が大きすぎます。'},{status:413});prepared.push({relative,data})}
     if(!prepared.some(x=>x.relative.toLowerCase()==='index.html'))return Response.json({error:'index.html を公開ルートに設定できませんでした。'},{status:400});
-    const siteId=team;
-    await replaceSiteFiles(env,siteId,prepared,teamLabel);
+    const siteId=team,deleteToken=`${crypto.randomUUID()}${crypto.randomUUID()}`;
+    await replaceSiteFiles(env,siteId,prepared,teamLabel,await tokenHash(deleteToken));
     const publishedUrl=`${url.origin}/s/${encodeURIComponent(siteId)}/`;
     const resultUrl=`${url.origin}/result?site=${encodeURIComponent(siteId)}`;
-    return Response.json({url:publishedUrl,resultUrl});
+    return Response.json({url:publishedUrl,resultUrl,siteId,deleteToken});
    }catch(e){console.error(e);return Response.json({error:'公開処理でエラーが発生しました。もう一度試してください。'},{status:500})}
   }
   if(request.method==='POST'&&url.pathname==='/api/publish-code'){
@@ -344,8 +362,9 @@ export default {
      {relative:'style.css',data:css},
      {relative:'script.js',data:js}
     ];
-    await replaceSiteFiles(env,siteId,prepared,teamLabel);
-    return Response.json({url:`${url.origin}/s/${encodeURIComponent(siteId)}/`,resultUrl:`${url.origin}/result?site=${encodeURIComponent(siteId)}`});
+    const deleteToken=`${crypto.randomUUID()}${crypto.randomUUID()}`;
+    await replaceSiteFiles(env,siteId,prepared,teamLabel,await tokenHash(deleteToken));
+    return Response.json({url:`${url.origin}/s/${encodeURIComponent(siteId)}/`,resultUrl:`${url.origin}/result?site=${encodeURIComponent(siteId)}`,siteId,deleteToken});
    }catch(e){console.error(e);return Response.json({error:'公開処理でエラーが発生しました。もう一度試してください。'},{status:500})}
   }
   if(request.method==='GET'&&url.pathname.startsWith('/s/')){
