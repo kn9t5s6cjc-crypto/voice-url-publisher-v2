@@ -249,7 +249,6 @@ footer{border-top:1px solid #aaa;padding-top:16px;display:flex;justify-content:s
 <div class="panel">
 <div class="card">
 <div class="card-head"><h2>サイトを作る・公開</h2><span class="step-no">01 / START</span></div>
-<a class="editor-start" href="/editor">この中でサイトを作る →</a>
 <div class="or">または、ZIPから公開</div>
 <form id="f">
 <label for="team">チーム名</label>
