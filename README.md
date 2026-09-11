@@ -1,9 +1,13 @@
 # VOICE URL Publisher v2
 
-イベント参加者が静的WebサイトのZIPをアップロードし、共有URLを発行するツールです。
+イベント参加者がブラウザ内でWebサイトを制作したり、静的WebサイトのZIPをアップロードしたりして、共有URLを発行するツールです。
 
 ## 対応
 - HTML / CSS / JavaScript の静的サイト
+- ブラウザ内のHTML / CSS / JavaScript編集とライブプレビュー
+- 編集内容の端末内自動保存
+- チーム名を使った固定URL（同名チームの再公開は内容を更新）
+- 公開済みチームサイトの一覧表示
 - Windowsで作成したZIP
 - macOS Finderで作成したZIP
 - `__MACOSX`, `.DS_Store`, `._*` を自動除外
