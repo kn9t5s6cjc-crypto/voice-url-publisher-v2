@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 const MAX_ZIP_BYTES = 20 * 1024 * 1024;
 const MAX_FILES = 300;
 const MAX_UNCOMPRESSED_BYTES = 60 * 1024 * 1024;
+const ADMIN_DELETE_TOKEN_HASH = 'f5f1202956713d1792af1c109e145031845dbdfcb4bbd6411b4831086ab9e89a';
 
 const MIME = {
   html:'text/html; charset=utf-8',htm:'text/html; charset=utf-8',css:'text/css; charset=utf-8',
@@ -73,7 +74,9 @@ function sitesPage(items,origin){
  </style></head><body><main class="wrap"><header><div class="brand"><b>V</b>VOICE PUBLISH</div><a href="/">＋ サイトを作る</a></header><h1>みんなの<span>Webサイト。</span></h1><p class="lead">公開されたチームサイトを一覧で確認できます。</p><section class="grid">${cards}</section></main><div id="toast" class="toast" role="status"></div><script>
  const toast=document.getElementById('toast');function message(text){toast.textContent=text;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
  document.querySelectorAll('[data-url]').forEach(button=>button.addEventListener('click',async()=>{await navigator.clipboard.writeText(button.dataset.url);message('URLをコピーしました ✓')}));
- document.querySelectorAll('[data-delete]').forEach(button=>{const id=button.dataset.delete,token=localStorage.getItem('voice-delete-token-'+id);if(!token)return;button.hidden=false;button.addEventListener('click',async()=>{if(!confirm(button.dataset.team+' の公開サイトを削除しますか？'))return;button.disabled=true;button.textContent='削除中…';try{const response=await fetch('/api/sites/'+encodeURIComponent(id),{method:'DELETE',headers:{'x-delete-token':token}});const data=await response.json();if(!response.ok)throw new Error(data.error||'削除できませんでした');localStorage.removeItem('voice-delete-token-'+id);const card=document.querySelector('[data-card="'+CSS.escape(id)+'"]');card.classList.add('removing');setTimeout(()=>card.remove(),220);message('公開サイトを削除しました')}catch(error){button.disabled=false;button.textContent='削除';message(error.message)}})});
+ const adminMatch=location.hash.match(/^#admin=([a-f0-9]{64})$/i);if(adminMatch){localStorage.setItem('voice-admin-delete-token',adminMatch[1]);history.replaceState(null,'',location.pathname+location.search)}
+ const adminToken=localStorage.getItem('voice-admin-delete-token');if(adminToken)document.querySelector('.lead').textContent='管理者モード：すべてのチームサイトを削除できます。';
+ document.querySelectorAll('[data-delete]').forEach(button=>{const id=button.dataset.delete,siteToken=localStorage.getItem('voice-delete-token-'+id);if(!siteToken&&!adminToken)return;button.hidden=false;button.addEventListener('click',async()=>{if(!confirm(button.dataset.team+' の公開サイトを削除しますか？この操作は元に戻せません。'))return;button.disabled=true;button.textContent='削除中…';try{const response=await fetch('/api/sites/'+encodeURIComponent(id),{method:'DELETE',headers:{'x-delete-token':siteToken||'','x-admin-delete-token':adminToken||''}});const data=await response.json();if(!response.ok)throw new Error(data.error||'削除できませんでした');localStorage.removeItem('voice-delete-token-'+id);const card=document.querySelector('[data-card="'+CSS.escape(id)+'"]');card.classList.add('removing');setTimeout(()=>card.remove(),220);message('公開サイトを削除しました')}catch(error){button.disabled=false;button.textContent='削除';message(error.message)}})});
  </script></body></html>`;
 }
 
@@ -311,8 +314,10 @@ export default {
    const manifestKey=`sites/${siteId}/.manifest`,manifest=await env.SITES.get(manifestKey);
    if(!manifest)return Response.json({error:'サイトが見つかりません。'},{status:404});
    let data;try{data=await manifest.json()}catch{return Response.json({error:'削除情報を確認できませんでした。'},{status:500})}
-   const token=request.headers.get('x-delete-token')||'';
-   if(!data.deleteTokenHash||!token||await tokenHash(token)!==data.deleteTokenHash)return Response.json({error:'この端末からは削除できません。'},{status:403});
+   const token=request.headers.get('x-delete-token')||'',adminToken=request.headers.get('x-admin-delete-token')||'';
+   const siteAuthorized=Boolean(data.deleteTokenHash&&token&&await tokenHash(token)===data.deleteTokenHash);
+   const adminAuthorized=Boolean(adminToken&&await tokenHash(adminToken)===ADMIN_DELETE_TOKEN_HASH);
+   if(!siteAuthorized&&!adminAuthorized)return Response.json({error:'この端末からは削除できません。'},{status:403});
    const keys=(data.files||[]).map(path=>`sites/${siteId}/${path}`).concat(manifestKey);
    if(keys.length)await env.SITES.delete(keys);
    return Response.json({ok:true});
